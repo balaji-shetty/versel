@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TaskFlow – Smart To-Do</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080b10;--surface:#0f1318;--card:#161b24;--border:#1e2633;
+      --accent:#0ea5e9;--accent2:#38bdf8;--glow:rgba(14,165,233,0.3);
+      --text:#e8f0f8;--muted:#6b7a8d;--danger:#f43f5e;
+      --success:#10b981;--warning:#f59e0b;--radius:14px;
+    }
+    body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden}
+    body::before{content:'';position:fixed;inset:0;
+      background:radial-gradient(ellipse 80% 50% at 20% 10%,rgba(14,165,233,0.08) 0%,transparent 60%),
+                 radial-gradient(ellipse 60% 40% at 80% 80%,rgba(56,189,248,0.05) 0%,transparent 60%);
+      pointer-events:none;z-index:0}
+
+    /* AUTH */
+    #auth-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;padding:1rem;background:var(--bg)}
+    .auth-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2.5rem 2rem;width:100%;max-width:420px;box-shadow:0 25px 60px rgba(0,0,0,0.5);animation:popIn 0.4s cubic-bezier(.34,1.56,.64,1) both}
+    .auth-logo{text-align:center;margin-bottom:1.8rem}
+    .auth-logo .icon{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-flex;align-items:center;justify-content:center;font-size:1.5rem;box-shadow:0 0 30px var(--glow);margin-bottom:0.8rem}
+    .auth-logo h1{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#e8f0f8,var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .auth-logo p{color:var(--muted);font-size:0.85rem;margin-top:0.3rem}
+    .tab-row{display:flex;background:var(--card);border-radius:10px;padding:4px;margin-bottom:1.5rem}
+    .tab-btn{flex:1;padding:0.55rem;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.88rem;font-weight:500;cursor:pointer;background:transparent;color:var(--muted);transition:all 0.2s}
+    .tab-btn.active{background:var(--accent);color:white;box-shadow:0 2px 12px var(--glow)}
+    .form-group{margin-bottom:1rem}
+    .form-group label{display:block;font-size:0.8rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem}
+    .form-input{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:0.75rem 1rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.95rem;outline:none;transition:all 0.2s}
+    .form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(14,165,233,0.15)}
+    .form-input::placeholder{color:var(--muted)}
+    .btn-full{width:100%;padding:0.85rem;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:0.95rem;font-weight:600;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;box-shadow:0 4px 15px var(--glow)}
+    .btn-full:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--glow)}
+    .btn-full:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+    .auth-error{background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.3);border-radius:8px;padding:0.65rem 0.9rem;font-size:0.85rem;color:var(--danger);margin-bottom:1rem;display:none}
+
+    /* APP */
+    #app-screen{display:none;min-height:100vh;position:relative;z-index:1}
+    .topbar{position:sticky;top:0;z-index:50;background:rgba(8,11,16,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:0.9rem 1.5rem;display:flex;align-items:center;gap:1rem}
+    .topbar-logo{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;background:linear-gradient(135deg,#e8f0f8,var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .user-badge{margin-left:auto;display:flex;align-items:center;gap:0.7rem;background:var(--surface);border:1px solid var(--border);border-radius:50px;padding:0.4rem 0.8rem 0.4rem 0.45rem}
+    .user-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:white}
+    .user-email{font-size:0.8rem;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .btn-signout{background:transparent;border:1px solid var(--border);border-radius:8px;padding:0.3rem 0.7rem;color:var(--muted);font-size:0.78rem;cursor:pointer;transition:all 0.2s;font-family:'DM Sans',sans-serif}
+    .btn-signout:hover{border-color:var(--danger);color:var(--danger)}
+    .main-content{max-width:720px;margin:0 auto;padding:2rem 1rem 4rem}
+
+    /* Stats */
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0.8rem;margin-bottom:1.8rem}
+    .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;text-align:center}
+    .stat-num{font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800}
+    .stat-label{font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-top:2px}
+
+    /* Add card */
+    .add-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.4rem;margin-bottom:1.5rem}
+    .add-card h3{font-family:'Syne',sans-serif;font-size:0.95rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:1rem}
+    .input-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.7rem;margin-bottom:0.7rem}
+    .input-full{grid-column:1/-1}
+    .field-label{font-size:0.75rem;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:0.3rem}
+    .field-input{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:0.65rem 0.9rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.9rem;outline:none;transition:all 0.2s}
+    .field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(14,165,233,0.12)}
+    .field-input::placeholder{color:var(--muted)}
+    select.field-input{cursor:pointer}
+    input[type="date"].field-input::-webkit-calendar-picker-indicator,
+    input[type="time"].field-input::-webkit-calendar-picker-indicator{filter:invert(0.6)}
+    .btn-add{background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;border:none;border-radius:10px;padding:0.7rem 1.4rem;font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px var(--glow);margin-top:0.3rem}
+    .btn-add:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--glow)}
+    .btn-add:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+
+    /* Filters */
+    .filters{display:flex;gap:0.45rem;flex-wrap:wrap;margin-bottom:1.2rem}
+    .filter-btn{padding:0.4rem 0.9rem;border-radius:50px;font-size:0.78rem;font-family:'DM Sans',sans-serif;font-weight:500;cursor:pointer;border:1.5px solid var(--border);background:transparent;color:var(--muted);transition:all 0.2s}
+    .filter-btn.active{background:var(--accent);border-color:var(--accent);color:white}
+    .filter-btn:hover:not(.active){border-color:var(--muted);color:var(--text)}
+
+    /* Task items */
+    .task-list{display:flex;flex-direction:column;gap:0.65rem}
+    .task-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;display:flex;align-items:flex-start;gap:0.8rem;transition:all 0.22s;animation:fadeIn 0.28s ease both;position:relative;overflow:hidden}
+    .task-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;opacity:1}
+    .task-item[data-priority="high"]::before{background:var(--danger)}
+    .task-item[data-priority="medium"]::before{background:var(--warning)}
+    .task-item[data-priority="low"]::before{background:var(--success)}
+    .task-item:hover{border-color:#2a3547;transform:translateX(2px)}
+    .task-item.done{opacity:0.5}
+    .task-item.done .task-title{text-decoration:line-through;color:var(--muted)}
+    .check-box{width:22px;height:22px;border:2px solid var(--border);border-radius:6px;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;background:transparent}
+    .check-box:hover{border-color:var(--accent2)}
+    .check-box.checked{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:var(--accent)}
+    .check-box.checked::after{content:'checkmark';color:white;font-size:0.75rem;font-weight:700}
+    .task-body{flex:1;min-width:0}
+    .task-title{font-size:0.95rem;color:var(--text);line-height:1.4;word-break:break-word}
+    .task-meta{display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.4rem}
+    .tag{font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;padding:2px 7px;border-radius:4px}
+    .tag.high{background:rgba(244,63,94,0.12);color:var(--danger)}
+    .tag.medium{background:rgba(245,158,11,0.12);color:var(--warning)}
+    .tag.low{background:rgba(16,185,129,0.12);color:var(--success)}
+    .due-chip{font-size:0.74rem;color:var(--muted)}
+    .due-chip.overdue{color:var(--danger);font-weight:500}
+    .task-actions{display:flex;gap:0.35rem;opacity:0;transition:opacity 0.18s;margin-top:2px}
+    .task-item:hover .task-actions{opacity:1}
+    .icon-btn{width:30px;height:30px;border:none;border-radius:7px;background:var(--card);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.82rem;transition:all 0.18s}
+    .icon-btn.edit:hover{color:var(--accent2);background:rgba(14,165,233,0.1)}
+    .icon-btn.del:hover{color:var(--danger);background:rgba(244,63,94,0.1)}
+
+    /* Edit */
+    .edit-input{flex:1;background:var(--card);border:1.5px solid var(--accent);border-radius:8px;padding:0.4rem 0.7rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.9rem;outline:none;width:100%;margin-bottom:0.5rem}
+    .edit-row{display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center}
+    .edit-small{background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:0.3rem 0.6rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.82rem;outline:none}
+    .edit-small:focus{border-color:var(--accent)}
+    input[type="date"].edit-small::-webkit-calendar-picker-indicator,input[type="time"].edit-small::-webkit-calendar-picker-indicator{filter:invert(0.6)}
+    .btn-save{background:var(--accent);color:white;border:none;border-radius:8px;padding:0.35rem 0.85rem;font-size:0.82rem;font-family:'DM Sans',sans-serif;cursor:pointer}
+    .btn-cancel-edit{background:transparent;border:1px solid var(--border);border-radius:8px;padding:0.35rem 0.7rem;font-size:0.82rem;color:var(--muted);font-family:'DM Sans',sans-serif;cursor:pointer}
+
+    .empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
+    .empty-icon{font-size:2.5rem;opacity:0.3;margin-bottom:0.8rem}
+    .loading{text-align:center;padding:2rem;color:var(--muted);font-size:0.9rem}
+
+    #toast{position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;display:flex;flex-direction:column;gap:0.45rem}
+    .toast{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.65rem 1rem;font-size:0.85rem;color:var(--text);animation:toastIn 0.28s ease both;box-shadow:0 8px 25px rgba(0,0,0,0.4)}
+
+    /* Courses Section */
+    .courses-section{margin-bottom:1.5rem;animation:fadeIn 0.4s 0.16s ease both}
+    .courses-heading{font-family:'Syne',sans-serif;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem}
+    .courses-heading::after{content:'';flex:1;height:1px;background:var(--border)}
+    .courses-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem}
+    .course-card{border-radius:var(--radius);overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;border:1px solid var(--border);transition:all 0.25s;position:relative;background:var(--surface)}
+    .course-card:hover{transform:translateY(-3px);box-shadow:0 12px 35px rgba(0,0,0,0.4);text-decoration:none}
+    .course-card.supabase:hover{border-color:rgba(62,207,142,0.5);box-shadow:0 12px 35px rgba(62,207,142,0.12)}
+    .course-card.sahaja:hover{border-color:rgba(251,146,60,0.5);box-shadow:0 12px 35px rgba(251,146,60,0.15)}
+    .course-thumb{width:100%;height:110px;object-fit:cover;display:block;position:relative;overflow:hidden;flex-shrink:0}
+    .course-thumb svg{width:100%;height:100%;display:block}
+    .course-body{padding:0.85rem 0.9rem;flex:1;display:flex;flex-direction:column}
+    .course-badge{font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:0.4rem;width:fit-content}
+    .supabase .course-badge{background:rgba(62,207,142,0.12);color:#3ecf8e}
+    .sahaja .course-badge{background:rgba(251,146,60,0.12);color:#fb923c}
+    .course-title{font-family:'Syne',sans-serif;font-size:0.82rem;font-weight:700;color:var(--text);line-height:1.35;margin-bottom:0.35rem;flex:1}
+    .course-meta{font-size:0.7rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;margin-top:auto}
+    .course-cta{font-size:0.68rem;font-weight:600;padding:3px 8px;border-radius:5px;display:inline-block}
+    .supabase .course-cta{background:rgba(62,207,142,0.15);color:#3ecf8e}
+    .sahaja .course-cta{background:rgba(251,146,60,0.15);color:#fb923c}
+    @media(max-width:500px){.courses-grid{grid-template-columns:1fr}.course-thumb{height:90px}}
+
+    @keyframes popIn{from{opacity:0;transform:scale(0.92) translateY(16px)}to{opacity:1;transform:none}}
+    @keyframes fadeIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+    @keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+    @media(max-width:500px){
+      .input-grid{grid-template-columns:1fr}
+      .task-actions{opacity:1}
+      .user-email{display:none}
+      .topbar{padding:0.8rem 1rem}
+    }
+  </style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="icon">&#10022;</div>
+      <h1>TaskFlow</h1>
+      <p>Your tasks, beautifully organized</p>
+    </div>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="switchTab('login')">Sign In</button>
+      <button class="tab-btn" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+    <div id="auth-error" class="auth-error"></div>
+    <div class="form-group">
+      <label>Email</label>
+      <input class="form-input" id="auth-email" type="email" placeholder="you@example.com"/>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input class="form-input" id="auth-password" type="password" placeholder="Min 6 characters"/>
+    </div>
+    <button class="btn-full" id="auth-btn" onclick="handleAuth()">Sign In</button>
+    <p style="text-align:center;margin-top:1rem;font-size:0.8rem;color:var(--muted)" id="auth-hint"></p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app-screen">
+  <div class="topbar">
+    <div style="font-size:1.3rem;color:var(--accent2)">&#10022;</div>
+    <div class="topbar-logo">TaskFlow</div>
+    <div class="user-badge">
+      <div class="user-avatar" id="user-initials">?</div>
+      <span class="user-email" id="user-email-display">—</span>
+      <button class="btn-signout" onclick="signOut()">Sign out</button>
+    </div>
+  </div>
+  <div class="main-content">
+    <!-- Courses Section -->
+    <div class="courses-section">
+      <div class="courses-heading">🎓 Courses by Dr. Balaji Shetty</div>
+      <div class="courses-grid">
+
+        <!-- Supabase Course -->
+        <a class="course-card supabase" href="https://www.udemy.com/course/supabase-crash-course-2026-database-api-tutorial-for-beg/?srsltid=AfmBOooytlpFTusRSjSZ5pQNw2VkGzO6WrxGxR8DqiQNi-0sWWdk5amM" target="_blank" rel="noopener noreferrer">
+          <div class="course-thumb">
+            <svg viewBox="0 0 300 110" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="sbg1" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#0a1628"/>
+                  <stop offset="100%" style="stop-color:#0d2137"/>
+                </linearGradient>
+                <linearGradient id="sbg2" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#3ecf8e"/>
+                  <stop offset="100%" style="stop-color:#22c55e"/>
+                </linearGradient>
+                <filter id="glow1"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <rect width="300" height="110" fill="url(#sbg1)"/>
+              <!-- Grid lines -->
+              <line x1="0" y1="27" x2="300" y2="27" stroke="#1a3a2a" stroke-width="0.5"/>
+              <line x1="0" y1="55" x2="300" y2="55" stroke="#1a3a2a" stroke-width="0.5"/>
+              <line x1="0" y1="82" x2="300" y2="82" stroke="#1a3a2a" stroke-width="0.5"/>
+              <line x1="75" y1="0" x2="75" y2="110" stroke="#1a3a2a" stroke-width="0.5"/>
+              <line x1="150" y1="0" x2="150" y2="110" stroke="#1a3a2a" stroke-width="0.5"/>
+              <line x1="225" y1="0" x2="225" y2="110" stroke="#1a3a2a" stroke-width="0.5"/>
+              <!-- Supabase logo shape -->
+              <g transform="translate(110,18)" filter="url(#glow1)">
+                <path d="M10 0 L42 0 L42 38 L0 38 Z" fill="url(#sbg2)" opacity="0.15" rx="4"/>
+                <path d="M21 8 L35 8 L35 24 L7 24 Z" fill="none" stroke="#3ecf8e" stroke-width="1.5" rx="2"/>
+                <rect x="12" y="13" width="6" height="6" rx="1" fill="#3ecf8e" opacity="0.8"/>
+                <rect x="23" y="13" width="6" height="6" rx="1" fill="#3ecf8e" opacity="0.5"/>
+                <rect x="12" y="29" width="6" height="6" rx="1" fill="#3ecf8e" opacity="0.5"/>
+                <rect x="23" y="29" width="6" height="6" rx="1" fill="#3ecf8e" opacity="0.3"/>
+                <!-- Lightning bolt -->
+                <path d="M28 4 L22 16 L26 16 L20 28 L32 14 L27 14 Z" fill="#3ecf8e" opacity="0.9"/>
+              </g>
+              <!-- Code text -->
+              <text x="20" y="68" font-family="monospace" font-size="8" fill="#3ecf8e" opacity="0.7">SELECT * FROM tasks</text>
+              <text x="20" y="80" font-family="monospace" font-size="8" fill="#3ecf8e" opacity="0.4">WHERE user_id = $1;</text>
+              <text x="20" y="92" font-family="monospace" font-size="8" fill="#3ecf8e" opacity="0.25">INSERT INTO profiles...</text>
+              <!-- Glow orb -->
+              <circle cx="240" cy="30" r="35" fill="#3ecf8e" opacity="0.05"/>
+              <circle cx="240" cy="30" r="18" fill="#3ecf8e" opacity="0.06"/>
+              <!-- Supabase label -->
+              <rect x="210" y="85" width="75" height="16" rx="4" fill="#3ecf8e" opacity="0.15"/>
+              <text x="247" y="96" font-family="sans-serif" font-size="7.5" fill="#3ecf8e" font-weight="bold" text-anchor="middle">SUPABASE 2026</text>
+            </svg>
+          </div>
+          <div class="course-body">
+            <div class="course-badge">🗄️ Database &amp; API</div>
+            <div class="course-title">Supabase Crash Course 2026: Database &amp; API for Beginners</div>
+            <div class="course-meta">
+              <span>Dr. Balaji Shetty</span>
+              <span class="course-cta">Enroll →</span>
+            </div>
+          </div>
+        </a>
+
+        <!-- Sahaja Yoga Course -->
+        <a class="course-card sahaja" href="https://www.udemy.com/course/sahajayoga/" target="_blank" rel="noopener noreferrer">
+          <div class="course-thumb">
+            <svg viewBox="0 0 300 110" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="syg1" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#1a0a00"/>
+                  <stop offset="100%" style="stop-color:#200d08"/>
+                </linearGradient>
+                <radialGradient id="aura" cx="50%" cy="60%" r="50%">
+                  <stop offset="0%" style="stop-color:#fb923c;stop-opacity:0.25"/>
+                  <stop offset="60%" style="stop-color:#f97316;stop-opacity:0.05"/>
+                  <stop offset="100%" style="stop-color:#f97316;stop-opacity:0"/>
+                </radialGradient>
+                <radialGradient id="crown" cx="50%" cy="0%" r="70%">
+                  <stop offset="0%" style="stop-color:#c084fc;stop-opacity:0.3"/>
+                  <stop offset="100%" style="stop-color:#c084fc;stop-opacity:0"/>
+                </radialGradient>
+                <filter id="glow2"><feGaussianBlur stdDeviation="2.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <rect width="300" height="110" fill="url(#syg1)"/>
+              <!-- Stars -->
+              <circle cx="20" cy="15" r="1" fill="white" opacity="0.4"/>
+              <circle cx="55" cy="8" r="0.8" fill="white" opacity="0.3"/>
+              <circle cx="270" cy="12" r="1" fill="white" opacity="0.4"/>
+              <circle cx="290" cy="35" r="0.7" fill="white" opacity="0.25"/>
+              <circle cx="40" cy="90" r="0.8" fill="white" opacity="0.2"/>
+              <circle cx="260" cy="85" r="1" fill="white" opacity="0.3"/>
+              <!-- Aura glow -->
+              <ellipse cx="150" cy="70" rx="80" ry="55" fill="url(#aura)"/>
+              <ellipse cx="150" cy="20" rx="60" ry="40" fill="url(#crown)"/>
+              <!-- Meditating figure -->
+              <g transform="translate(115, 15)" filter="url(#glow2)">
+                <!-- Body glow -->
+                <ellipse cx="35" cy="65" rx="28" ry="22" fill="#fb923c" opacity="0.07"/>
+                <!-- Legs / lotus pose -->
+                <ellipse cx="35" cy="75" rx="26" ry="10" fill="#fb923c" opacity="0.25"/>
+                <path d="M10 72 Q20 68 35 72 Q50 68 60 72 Q55 82 35 83 Q15 82 10 72Z" fill="#c2410c" opacity="0.5"/>
+                <!-- Body -->
+                <rect x="28" y="42" width="14" height="28" rx="5" fill="#fb923c" opacity="0.75"/>
+                <!-- Head -->
+                <circle cx="35" cy="34" r="10" fill="#fb923c" opacity="0.85"/>
+                <!-- Crown chakra glow -->
+                <circle cx="35" cy="24" r="5" fill="#c084fc" opacity="0.6"/>
+                <circle cx="35" cy="24" r="3" fill="#e9d5ff" opacity="0.5"/>
+                <!-- Rays from crown -->
+                <line x1="35" y1="12" x2="35" y2="6" stroke="#c084fc" stroke-width="1" opacity="0.7"/>
+                <line x1="42" y1="14" x2="47" y2="9" stroke="#c084fc" stroke-width="0.8" opacity="0.5"/>
+                <line x1="28" y1="14" x2="23" y2="9" stroke="#c084fc" stroke-width="0.8" opacity="0.5"/>
+                <!-- Heart chakra -->
+                <circle cx="35" cy="52" r="3" fill="#22c55e" opacity="0.6"/>
+                <!-- Hands in mudra -->
+                <ellipse cx="22" cy="68" rx="5" ry="3" fill="#fb923c" opacity="0.6"/>
+                <ellipse cx="48" cy="68" rx="5" ry="3" fill="#fb923c" opacity="0.6"/>
+              </g>
+              <!-- Lotus petals at bottom -->
+              <g transform="translate(90, 88)" opacity="0.5">
+                <ellipse cx="60" cy="8" rx="12" ry="7" fill="#fb923c" opacity="0.4" transform="rotate(-30,60,8)"/>
+                <ellipse cx="60" cy="8" rx="12" ry="7" fill="#fb923c" opacity="0.4" transform="rotate(-15,60,8)"/>
+                <ellipse cx="60" cy="8" rx="12" ry="7" fill="#fb923c" opacity="0.5"/>
+                <ellipse cx="60" cy="8" rx="12" ry="7" fill="#fb923c" opacity="0.4" transform="rotate(15,60,8)"/>
+                <ellipse cx="60" cy="8" rx="12" ry="7" fill="#fb923c" opacity="0.4" transform="rotate(30,60,8)"/>
+              </g>
+              <!-- Label -->
+              <rect x="15" y="88" width="90" height="16" rx="4" fill="#fb923c" opacity="0.15"/>
+              <text x="60" y="99" font-family="sans-serif" font-size="7.5" fill="#fb923c" font-weight="bold" text-anchor="middle">SAHAJA YOGA</text>
+              <!-- 5 min badge -->
+              <rect x="225" y="10" width="62" height="20" rx="5" fill="#fb923c" opacity="0.2"/>
+              <text x="256" y="23" font-family="sans-serif" font-size="7.5" fill="#fb923c" font-weight="bold" text-anchor="middle">⏱ 5 MIN/DAY</text>
+            </svg>
+          </div>
+          <div class="course-body">
+            <div class="course-badge">🧘 Meditation</div>
+            <div class="course-title">Become Stress-Free &amp; Addiction-Free with Daily 5-Min Scientific Sahaja Yoga</div>
+            <div class="course-meta">
+              <span>Dr. Balaji Shetty</span>
+              <span class="course-cta">Enroll →</span>
+            </div>
+          </div>
+        </a>
+
+      </div>
+    </div>
+
+    <div class="stats" style="animation:fadeIn 0.4s ease both">
+      <div class="stat">
+        <div class="stat-num" id="stat-total" style="color:var(--accent2)">0</div>
+        <div class="stat-label">Total</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="stat-pending" style="color:var(--warning)">0</div>
+        <div class="stat-label">Pending</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="stat-done" style="color:var(--success)">0</div>
+        <div class="stat-label">Done</div>
+      </div>
+    </div>
+
+    <div class="add-card" style="animation:fadeIn 0.4s 0.08s ease both">
+      <h3>+ Add New Task</h3>
+      <div class="input-grid">
+        <div class="input-full">
+          <div class="field-label">Task Title *</div>
+          <input class="field-input" id="task-title" type="text" placeholder="What needs to be done?" maxlength="200"
+            onkeydown="if(event.key==='Enter')addTask()"/>
+        </div>
+        <div>
+          <div class="field-label">Priority</div>
+          <select class="field-input" id="task-priority">
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div>
+          <div class="field-label">Due Date</div>
+          <input class="field-input" id="task-date" type="date"/>
+        </div>
+        <div>
+          <div class="field-label">Due Time</div>
+          <input class="field-input" id="task-time" type="time"/>
+        </div>
+      </div>
+      <button class="btn-add" onclick="addTask()" id="add-btn">Add Task</button>
+    </div>
+
+    <div class="filters" style="animation:fadeIn 0.4s 0.12s ease both">
+      <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+      <button class="filter-btn" onclick="setFilter('pending',this)">Pending</button>
+      <button class="filter-btn" onclick="setFilter('done',this)">Completed</button>
+      <button class="filter-btn" onclick="setFilter('high',this)">High</button>
+      <button class="filter-btn" onclick="setFilter('medium',this)">Medium</button>
+      <button class="filter-btn" onclick="setFilter('low',this)">Low</button>
+      <button class="filter-btn" onclick="setFilter('overdue',this)">Overdue</button>
+    </div>
+
+    <div class="task-list" id="task-list">
+      <div class="loading">Loading your tasks…</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SUPA_URL = 'https://jvlvpeszoktdzlpfplcm.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp2bHZwZXN6b2t0ZHpscGZwbGNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMDQwOTEsImV4cCI6MjA5MjU4MDA5MX0.Wmj3OG0Efzx4afEF6H9wlRwy0a89BxNvtp7p-g-cqK8';
+const db = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+let currentUser = null;
+let tasks = [];
+let filter = 'all';
+let editingId = null;
+
+// Auth state listener
+db.auth.onAuthStateChange(async (_event, session) => {
+  if (session && session.user) {
+    currentUser = session.user;
+    showApp();
+    await loadTasks();
+  } else {
+    currentUser = null;
+    tasks = [];
+    showAuth();
+  }
+});
+
+function showAuth() {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app-screen').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  const email = currentUser.email || '';
+  document.getElementById('user-email-display').textContent = email;
+  document.getElementById('user-initials').textContent = (email[0] || '?').toUpperCase();
+}
+
+// ── Tab / mode ──
+let authMode = 'login';
+function switchTab(mode) {
+  authMode = mode;
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (mode === 'login' && i === 0) || (mode === 'signup' && i === 1));
+  });
+  document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign In' : 'Create Account';
+  document.getElementById('auth-hint').textContent = mode === 'signup' ? 'A confirmation email will be sent.' : '';
+  clearAuthError();
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function clearAuthError() {
+  document.getElementById('auth-error').style.display = 'none';
+}
+
+async function handleAuth() {
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  clearAuthError();
+  if (!email || !password) { showAuthError('Please enter email and password.'); return; }
+  if (password.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
+
+  const btn = document.getElementById('auth-btn');
+  btn.disabled = true;
+  btn.textContent = 'Please wait…';
+
+  let result;
+  if (authMode === 'login') {
+    result = await db.auth.signInWithPassword({ email, password });
+  } else {
+    result = await db.auth.signUp({ email, password });
+    if (!result.error) showToast('Account created! Check your email to confirm.');
+  }
+
+  if (result.error) showAuthError(result.error.message);
+  btn.disabled = false;
+  btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+}
+
+async function signOut() {
+  const btn = document.querySelector('.btn-signout');
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
+  try {
+    await db.auth.signOut();
+  } catch(e) { /* ignore */ }
+  currentUser = null;
+  tasks = [];
+  editingId = null;
+  filter = 'all';
+  showAuth();
+  // Clear auth form for fresh login
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-password').value = '';
+  clearAuthError();
+  switchTab('login');
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
+}
+
+// ── Tasks ──
+async function loadTasks() {
+  document.getElementById('task-list').innerHTML = '<div class="loading">Loading your tasks…</div>';
+  const { data, error } = await db.from('tasks')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: false });
+  if (error) { showToast('Failed to load tasks'); return; }
+  tasks = data || [];
+  render();
+}
+
+async function addTask() {
+  const title = document.getElementById('task-title').value.trim();
+  const priority = document.getElementById('task-priority').value;
+  const due_date = document.getElementById('task-date').value || null;
+  const due_time = document.getElementById('task-time').value || null;
+  if (!title) { showToast('Please enter a task title!'); return; }
+
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+
+  const { data, error } = await db.from('tasks')
+    .insert([{ user_id: currentUser.id, title, priority, due_date, due_time }])
+    .select().single();
+
+  btn.disabled = false; btn.textContent = 'Add Task';
+  if (error) { showToast('Failed to add task: ' + error.message); return; }
+
+  tasks.unshift(data);
+  render();
+  document.getElementById('task-title').value = '';
+  document.getElementById('task-date').value = '';
+  document.getElementById('task-time').value = '';
+  document.getElementById('task-priority').value = 'medium';
+  showToast('Task added!');
+}
+
+async function toggleDone(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  const { error } = await db.from('tasks').update({ completed: !t.completed }).eq('id', id);
+  if (!error) { t.completed = !t.completed; render(); }
+}
+
+async function deleteTask(id) {
+  const el = document.querySelector('[data-id="' + id + '"]');
+  if (el) { el.style.transition = 'all 0.22s'; el.style.opacity = '0'; el.style.transform = 'translateX(30px)'; }
+  await new Promise(r => setTimeout(r, 200));
+  await db.from('tasks').delete().eq('id', id);
+  tasks = tasks.filter(t => t.id !== id);
+  render();
+  showToast('Task deleted');
+}
+
+function startEdit(id) {
+  editingId = id;
+  render();
+  setTimeout(() => {
+    const inp = document.getElementById('edit-title-' + id);
+    if (inp) { inp.focus(); inp.select(); }
+  }, 50);
+}
+
+function cancelEdit() { editingId = null; render(); }
+
+async function saveEdit(id) {
+  const title = (document.getElementById('edit-title-' + id) || {}).value;
+  if (!title || !title.trim()) { showToast('Title cannot be empty!'); return; }
+  const due_date = (document.getElementById('edit-date-' + id) || {}).value || null;
+  const due_time = (document.getElementById('edit-time-' + id) || {}).value || null;
+  const priority = (document.getElementById('edit-priority-' + id) || {}).value;
+
+  const { error } = await db.from('tasks').update({ title: title.trim(), due_date, due_time, priority }).eq('id', id);
+  if (error) { showToast('Update failed'); return; }
+
+  const t = tasks.find(t => t.id === id);
+  if (t) Object.assign(t, { title: title.trim(), due_date, due_time, priority });
+  editingId = null;
+  render();
+  showToast('Task updated!');
+}
+
+// ── Render ──
+function setFilter(f, btn) {
+  filter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
+function isOverdue(t) {
+  if (!t.due_date || t.completed) return false;
+  const due = t.due_time ? new Date(t.due_date + 'T' + t.due_time) : new Date(t.due_date + 'T23:59:59');
+  return due < new Date();
+}
+
+function formatDue(t) {
+  if (!t.due_date) return '';
+  const d = new Date(t.due_date + 'T00:00');
+  const ds = d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+  const ts = t.due_time ? ' at ' + t.due_time.slice(0, 5) : '';
+  return ds + ts;
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = tasks.length;
+  document.getElementById('stat-pending').textContent = tasks.filter(t => !t.completed).length;
+  document.getElementById('stat-done').textContent = tasks.filter(t => t.completed).length;
+}
+
+function render() {
+  updateStats();
+  const list = document.getElementById('task-list');
+  const filtered = tasks.filter(t => {
+    if (filter === 'all') return true;
+    if (filter === 'pending') return !t.completed;
+    if (filter === 'done') return t.completed;
+    if (filter === 'overdue') return isOverdue(t);
+    return t.priority === filter;
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">&#10022;</div><p>' +
+      (tasks.length ? 'No tasks match this filter.' : 'No tasks yet — add one above!') + '</p></div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(t => {
+    const overdue = isOverdue(t);
+    const dueStr = formatDue(t);
+
+    if (editingId === t.id) {
+      return '<div class="task-item" data-id="' + t.id + '" data-priority="' + t.priority + '">' +
+        '<div class="check-box ' + (t.completed ? 'checked' : '') + '" onclick="toggleDone(\'' + t.id + '\')"></div>' +
+        '<div class="task-body">' +
+          '<input class="edit-input" id="edit-title-' + t.id + '" value="' + esc(t.title) + '" ' +
+            'onkeydown="if(event.key===\'Enter\')saveEdit(\'' + t.id + '\');if(event.key===\'Escape\')cancelEdit()"/>' +
+          '<div class="edit-row">' +
+            '<select class="edit-small" id="edit-priority-' + t.id + '">' +
+              '<option value="high"' + (t.priority==='high'?' selected':'') + '>High</option>' +
+              '<option value="medium"' + (t.priority==='medium'?' selected':'') + '>Medium</option>' +
+              '<option value="low"' + (t.priority==='low'?' selected':'') + '>Low</option>' +
+            '</select>' +
+            '<input type="date" class="edit-small" id="edit-date-' + t.id + '" value="' + (t.due_date||'') + '"/>' +
+            '<input type="time" class="edit-small" id="edit-time-' + t.id + '" value="' + (t.due_time?t.due_time.slice(0,5):'') + '"/>' +
+            '<button class="btn-save" onclick="saveEdit(\'' + t.id + '\')">Save</button>' +
+            '<button class="btn-cancel-edit" onclick="cancelEdit()">Cancel</button>' +
+          '</div>' +
+        '</div></div>';
+    }
+
+    return '<div class="task-item ' + (t.completed ? 'done' : '') + '" data-id="' + t.id + '" data-priority="' + t.priority + '">' +
+      '<div class="check-box ' + (t.completed ? 'checked' : '') + '" onclick="toggleDone(\'' + t.id + '\')"></div>' +
+      '<div class="task-body">' +
+        '<div class="task-title">' + esc(t.title) + '</div>' +
+        '<div class="task-meta">' +
+          '<span class="tag ' + t.priority + '">' + t.priority + '</span>' +
+          (dueStr ? '<span class="due-chip ' + (overdue ? 'overdue' : '') + '">Due: ' + esc(dueStr) + (overdue ? ' · Overdue!' : '') + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="task-actions">' +
+        '<button class="icon-btn edit" onclick="startEdit(\'' + t.id + '\')" title="Edit">&#9998;</button>' +
+        '<button class="icon-btn del" onclick="deleteTask(\'' + t.id + '\')" title="Delete">&#10005;</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+function showToast(msg) {
+  const c = document.getElementById('toast');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 2800);
+}
+
+document.getElementById('auth-password').addEventListener('keydown', e => { if (e.key === 'Enter') handleAuth(); });
+</script>
+</body>
+</html>
